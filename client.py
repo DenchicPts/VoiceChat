@@ -16,7 +16,6 @@ class VoiceClient:
         # Boolean
         self.authenticated = False
         self.audio_streams = []
-        print(host)
 
 
     def start_client(self):

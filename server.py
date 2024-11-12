@@ -3,7 +3,7 @@ import threading
 import os
 import time
 import asyncio
-from logging import fatal
+
 
 import select
 
@@ -19,7 +19,7 @@ class VoiceServer:
         self.room_password = password
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.stop_event = threading.Event()
-
+        self.blocked_clients = {}
 
     def start(self):
         self.server_socket.setblocking(False)
@@ -62,31 +62,31 @@ class VoiceServer:
 
     def handle_client(self, message, client_address):
         try:
-            # Декодируем сообщение от клиента
-            welcome_message = message.decode('utf-8')
-            print("Получено сообщение:", welcome_message)
+            if message:
+                # Проверка, если клиент заблокирован
+                if client_address in self.blocked_clients:
+                    unblock_time = self.blocked_clients[client_address]
+                    if time.time() < unblock_time:
+                        print(f"SERVER ### Клиент {client_address} заблокирован до {unblock_time}")
+                        return
+                    else:
+                        del self.blocked_clients[client_address]  # Удаляем блокировку, если время прошло
 
-            if welcome_message:
+                welcome_message = message.decode('utf-8')
                 parts = welcome_message.split('*')
-                if len(parts) < 2:
-                    print(f"SERVER Неверное приветственное сообщение от {client_address}")
-                    return
-
                 nickname = parts[0]
-                client_room_name = parts[1]
+                #client_room_name = parts[1]
                 password = parts[2] if len(parts) > 2 else ""
 
                 # Проверяем пароль
                 if self.room_password != password:
-                    print(f"SERVER Неверный пароль от {client_address}")
+                    print(f"SERVER ### Неверный пароль от {client_address}")
                     self.server_socket.sendto("Invalid password".encode('utf-8'), client_address)
+                    self.blocked_clients[client_address] = time.time() + 5
                     return
 
-                # Проверяем, не хост ли это (по IP)
-                if client_address[0] in {self.host, "127.0.0.1"}:
-                    self.room_name = client_room_name
+                print("SERVER ### Получено сообщение:", welcome_message)
 
-                print(f"SERVER Имя комнаты: {self.room_name}, Пароль: {password}")
                 # Добавляем клиента в список (для UDP, можно хранить их адреса)
                 self.clients[client_address] = nickname
 
@@ -110,13 +110,14 @@ class VoiceServer:
 
                             if message and decoded_message:
                                 print(f"SERVER Получено сообщение от {client_address}: {message}")
+
                             elif message and not decoded_message:
                                 #перекидывание звука другим клиентам
 
 
                                 del message
                             else:
-                                print(f"###Клиент {client_address} отключился")
+                                print(f"SERVER ###Клиент {client_address} отключился")
                                 break
                         else:
                             print("Сообщение от неизвестного клиента")
